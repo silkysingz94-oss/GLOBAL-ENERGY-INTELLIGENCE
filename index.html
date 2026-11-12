@@ -164,7 +164,7 @@ footer{font-size:9px;color:#71869a;line-height:1.5;margin-top:10px}
 
  <div class="section">
   <div class="section-title">Global households</div>
-  <div class="small">Automatically retrieved from the UN DESA 2026 household-size compilation. Household totals are estimated from population and average household size.</div>
+  <div class="small">Average household size from the UN DESA Population Division 2026 database, delivered through a public CSV mirror. The mirror reformats the published table and retains each country's source and reference year. Household totals are estimates, not census counts. <a href="https://population.un.org/Household/" target="_blank" rel="noopener" style="color:#26d9e8">Official UN DESA database</a> · <a href="https://nationsinquiry.com/datasets/household-size/2026" target="_blank" rel="noopener" style="color:#26d9e8">CSV source</a>.</div>
   <div id="householdStatus" class="status">Loading household data online...</div>
   <label for="householdURL">Optional alternative household CSV URL</label>
   <input id="householdURL" placeholder="Optional public CSV URL">
@@ -179,7 +179,7 @@ footer{font-size:9px;color:#71869a;line-height:1.5;margin-top:10px}
   <div class="small">
    • Our World in Data — Energy<br>
    • Our World in Data — Electricity access<br>
-   • UN DESA — Household Size and Composition 2026<br>
+   • UN DESA Population Division — Household Size and Composition 2026 (CSV mirror)<br>
    • OpenStreetMap — Power infrastructure<br>
    • Geo-Countries — Country boundaries
   </div>
@@ -642,28 +642,44 @@ function parseHouseholdRows(rows){
 }
 
 async function loadHouseholdData(url=URLS.households){
- $("householdStatus").textContent="Connecting to UN DESA household-size data...";
+ $("householdStatus").textContent="Connecting to UN DESA 2026 household-size data...";
  $("globalHouseholdStatus").textContent="Loading household-size data...";
+ const candidates=[
+  url,
+  "https://api.allorigins.win/raw?url="+encodeURIComponent(url),
+  "https://corsproxy.io/?url="+encodeURIComponent(url)
+ ];
+ let lastError=null,raw=null,usedSource="";
+ for(const candidate of [...new Set(candidates)]){
+  try{
+   const response=await fetch(candidate,{cache:"no-cache"});
+   if(!response.ok)throw new Error("HTTP "+response.status);
+   const body=await response.text();
+   if(!body||body.trim().length<100)throw new Error("The source returned an empty or incomplete CSV.");
+   raw=body;usedSource=candidate;break;
+  }catch(error){
+   lastError=error;
+   console.warn("Household CSV endpoint failed:",candidate,error);
+  }
+ }
  try{
-  const response=await fetch(url,{cache:"no-cache"});
-  if(!response.ok)throw new Error("HTTP "+response.status);
-  const raw=await response.text();
+  if(!raw)throw new Error(lastError?.message||"All household CSV endpoints failed.");
   const rows=parseHouseholdCSVText(raw);
   parseHouseholdRows(rows);
-  if(!householdRows.length)throw new Error("No country household-size records were recognised.");
-
+  if(!householdRows.length)throw new Error("CSV downloaded, but no valid country household-size records were recognised. Check the column names.");
   householdRows.sort((a,b)=>a.country.localeCompare(b.country));
-  $("householdStatus").textContent="Loaded average household size for "+householdRows.length+" countries. UN DESA 2026 compilation.";
+  const viaProxy=usedSource!==url;
+  $("householdStatus").textContent="Loaded average household size for "+householdRows.length+" countries from the UN DESA 2026 compilation."+(viaProxy?" (CORS fallback used)":"");
   $("householdStatus").className="status good";
-  $("globalHouseholdStatus").textContent="Household-size data loaded for "+householdRows.length+" countries.";
+  $("globalHouseholdStatus").textContent="Household-size data loaded for "+householdRows.length+" countries. Country-specific reference years are retained.";
   $("globalHouseholdStatus").className="status good";
   updateDashboard();
   applyChoropleth();
  }catch(err){
   console.error("Household data error:",err);
-  $("householdStatus").textContent="Household source unavailable: "+err.message;
+  $("householdStatus").textContent="Household source unavailable after direct and CORS-fallback attempts: "+err.message;
   $("householdStatus").className="status bad";
-  $("globalHouseholdStatus").textContent="Household data unavailable. Check network/CORS or source availability.";
+  $("globalHouseholdStatus").textContent="Household data could not be retrieved. Check the network or use the alternative CSV URL field.";
   $("globalHouseholdStatus").className="status bad";
  }
 }
