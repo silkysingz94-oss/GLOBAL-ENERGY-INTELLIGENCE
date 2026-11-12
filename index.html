@@ -48,6 +48,8 @@ select,input,button{
  width:100%;background:#0a1724;color:var(--text);border:1px solid #30465b;
  border-radius:7px;padding:9px;font-size:12px;outline:none;
 }
+select{display:block;min-height:38px;position:relative;z-index:20;pointer-events:auto;appearance:auto;-webkit-appearance:menulist;cursor:pointer}
+select option{background:#0a1724;color:#e8f1f8}
 button{cursor:pointer;background:#123246;border-color:#1b6270;color:#bdf8ff;font-weight:700}
 button:hover{background:#17485c}
 button.secondary{background:#172638;border-color:#34485c;color:#d8e5ef}
@@ -433,15 +435,28 @@ async function loadCountries(){
    layer.on("click",()=>selectCountry(iso));
   }
  }).addTo(map);
- const select=$("countrySelect");select.innerHTML="";
- Object.entries(countryNameByISO).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([iso,name])=>{
-  const option=document.createElement("option");option.value=iso;option.textContent=name;select.appendChild(option);
+ const select=$("countrySelect");
+ select.disabled=false;
+ select.removeAttribute("disabled");
+ select.innerHTML="";
+ const entries=Object.entries(countryNameByISO);
+ const gambia=entries.find(([iso,name])=>iso==="GMB"||norm(name)==="thegambia"||norm(name)==="gambia");
+ const ordered=[
+  ...(gambia?[gambia]:[]),
+  ...entries.filter(([iso])=>!gambia||iso!==gambia[0]).sort((a,b)=>a[1].localeCompare(b[1]))
+ ];
+ ordered.forEach(([iso,name])=>{
+  const option=document.createElement("option");
+  option.value=iso;
+  option.textContent=name;
+  option.disabled=false;
+  select.appendChild(option);
  });
  if(!countryNameByISO[selectedISO]){
-  const gambia=Object.entries(countryNameByISO).find(([iso,name])=>iso==="GMB"||norm(name)==="thegambia"||norm(name)==="gambia");
-  selectedISO=gambia?gambia[0]:Object.keys(countryNameByISO)[0];
+  selectedISO=gambia?gambia[0]:ordered[0][0];
  }
  select.value=selectedISO;
+ select.dispatchEvent(new Event("change",{bubbles:true}));
  $("selectedCountryChip").textContent="Selected: "+(countryNameByISO[selectedISO]||selectedISO);
  $("headerStatus").textContent="Country boundaries loaded • "+Object.keys(countryNameByISO).length+" countries";
  applyChoropleth();
@@ -937,14 +952,20 @@ function exportCountry(){
 /* ==========================================================
    EVENT HANDLERS
 ========================================================== */
-$("countrySelect").addEventListener("change",e=>{
- selectCountry(e.target.value);
- const f=countryFeatureByISO[e.target.value];
- if(f){
-  const layer=L.geoJSON(f);
-  map.fitBounds(layer.getBounds(),{maxZoom:6});
+function handleCountrySelection(value){
+ const iso=String(value||"").trim().toUpperCase();
+ if(!iso||!countryNameByISO[iso])return;
+ selectCountry(iso);
+ const feature=countryFeatureByISO[iso];
+ if(feature){
+  try{
+   const bounds=L.geoJSON(feature).getBounds();
+   if(bounds.isValid())map.fitBounds(bounds,{padding:[24,24],maxZoom:6});
+  }catch(error){console.warn("Could not zoom to selected country:",error);}
  }
-});
+}
+$("countrySelect").addEventListener("change",e=>handleCountrySelection(e.target.value));
+$("countrySelect").addEventListener("input",e=>handleCountrySelection(e.target.value));
 $("yearSelect").addEventListener("change",e=>{
  selectedYear=e.target.value==="latest"?"latest":Number(e.target.value);
  updateDashboard();
