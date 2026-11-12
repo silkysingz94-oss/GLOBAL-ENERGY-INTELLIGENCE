@@ -331,10 +331,17 @@ function setBase(name){
 }
 
 function countryISO(p){
- return String(p.ISO_A3||p.ADM0_A3||p.iso_a3||p.ISO3||"").toUpperCase();
+ const candidates=[p.ISO_A3,p.iso_a3,p.ISO_A3_EH,p.iso_a3_eh,p.ADM0_A3,p.adm0_a3,p.ISO3,p.iso3,p.SOV_A3,p.sov_a3];
+ for(const value of candidates){
+  const code=String(value||"").trim().toUpperCase();
+  if(/^[A-Z]{3}$/.test(code))return code;
+ }
+ const n=norm(p.ADMIN||p.NAME_EN||p.name||p.NAME||p.SOVEREIGNT||"");
+ const aliases={"thegambia":"GMB","gambia":"GMB","unitedstatesofamerica":"USA","russianfederation":"RUS","bolivia":"BOL","venezuela":"VEN","tanzania":"TZA","iran":"IRN","syria":"SYR","southkorea":"KOR","northkorea":"PRK","ivorycoast":"CIV","czechia":"CZE","moldova":"MDA","brunei":"BRN","capeverde":"CPV","swaziland":"SWZ"};
+ return aliases[n]||"";
 }
 function countryName(p){
- return p.ADMIN||p.name||p.NAME||p.SOVEREIGNT||"Unknown";
+ return p.ADMIN||p.NAME_EN||p.name||p.NAME||p.SOVEREIGNT||"Unknown";
 }
 
 function getMetric(iso){
@@ -396,35 +403,47 @@ function selectCountry(iso){
 }
 
 async function loadCountries(){
- const r=await fetch(URLS.countries);
- if(!r.ok)throw new Error("Country boundary download failed: HTTP "+r.status);
- countryGeo=await r.json();
-
+ const sources=[URLS.countries,"https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson"];
+ let lastError=null,loaded=null;
+ for(const url of sources){
+  try{
+   const response=await fetch(url,{cache:"no-cache"});
+   if(!response.ok)throw new Error("HTTP "+response.status);
+   const data=await response.json();
+   if(!data.features?.length)throw new Error("No country features returned");
+   loaded=data;break;
+  }catch(err){lastError=err;console.warn("Country source failed:",url,err);}
+ }
+ if(!loaded)throw new Error("Country boundary sources unavailable: "+(lastError?.message||"unknown error"));
+ countryGeo=loaded;countryByISO={};countryNameByISO={};countryFeatureByISO={};
  countryGeo.features.forEach(f=>{
-  const iso=countryISO(f.properties);
-  if(!iso||iso==="-99")return;
-  const name=countryName(f.properties);
-  countryByISO[iso]=f;
-  countryNameByISO[iso]=name;
-  countryFeatureByISO[iso]=f;
+  const iso=countryISO(f.properties||{});
+  if(!iso)return;
+  const name=countryName(f.properties||{});
+  countryByISO[iso]=f;countryNameByISO[iso]=name;countryFeatureByISO[iso]=f;
  });
-
+ if(!Object.keys(countryNameByISO).length)throw new Error("No valid country ISO codes found in boundary data.");
+ if(countryLayer)map.removeLayer(countryLayer);
  countryLayer=L.geoJSON(countryGeo,{
+  filter:feature=>!!countryISO(feature.properties||{}),
   style:{color:"#647b8e",weight:.5,fillColor:"#1b526d",fillOpacity:.65},
   onEachFeature:(feature,layer)=>{
-   const iso=countryISO(feature.properties);
-   const name=countryName(feature.properties);
-   layer.bindTooltip(name);
+   const iso=countryISO(feature.properties||{});
+   layer.bindTooltip(countryName(feature.properties||{}));
    layer.on("click",()=>selectCountry(iso));
   }
  }).addTo(map);
-
- const select=$("countrySelect");
- select.innerHTML="";
+ const select=$("countrySelect");select.innerHTML="";
  Object.entries(countryNameByISO).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([iso,name])=>{
-  const o=document.createElement("option");o.value=iso;o.textContent=name;select.appendChild(o);
+  const option=document.createElement("option");option.value=iso;option.textContent=name;select.appendChild(option);
  });
+ if(!countryNameByISO[selectedISO]){
+  const gambia=Object.entries(countryNameByISO).find(([iso,name])=>iso==="GMB"||norm(name)==="thegambia"||norm(name)==="gambia");
+  selectedISO=gambia?gambia[0]:Object.keys(countryNameByISO)[0];
+ }
  select.value=selectedISO;
+ $("selectedCountryChip").textContent="Selected: "+(countryNameByISO[selectedISO]||selectedISO);
+ $("headerStatus").textContent="Country boundaries loaded • "+Object.keys(countryNameByISO).length+" countries";
  applyChoropleth();
 }
 
@@ -952,12 +971,14 @@ $("loadHouseholdURL").addEventListener("click",()=>{
  else alert("Enter a public CSV URL first.");
 });
 $("resetBtn").addEventListener("click",()=>{
+ selectedYear="latest";$("yearSelect").value="latest";
+ $("themeSelect").value="population";$("baseSelect").value="dark";setBase("dark");
  map.setView([20,0],2);
- selectCountry("GMB");
- $("themeSelect").value="population";
- $("baseSelect").value="dark";
- setBase("dark");
- applyChoropleth();
+ const entry=Object.entries(countryNameByISO).find(([iso,name])=>iso==="GMB"||norm(name)==="thegambia"||norm(name)==="gambia");
+ if(entry)selectCountry(entry[0]);
+ else updateDashboard();
+ updateDashboard();applyChoropleth();
+ $("headerStatus").textContent="Map and selections reset";
 });
 $("refreshBtn").addEventListener("click",async()=>{
  $("headerStatus").textContent="Refreshing...";
@@ -981,28 +1002,20 @@ map.on("moveend",()=>{
    STARTUP
 ========================================================== */
 async function initialise(){
- $("headerStatus").textContent="Loading boundaries and datasets...";
- try{
-  await loadCountries();
- }catch(e){
-  $("headerStatus").textContent="Boundary loading failed";
-  console.error(e);
- }
- const tasks=await Promise.allSettled([
-  loadEnergy(),
-  loadAccess(),
-  loadHouseholdData()
- ]);
+ $("headerStatus").textContent="Loading country boundaries...";
+ let boundaryOK=false;
+ try{await loadCountries();boundaryOK=true;}
+ catch(e){$("headerStatus").textContent="Boundary loading failed: "+e.message;console.error(e);}
+ const tasks=await Promise.allSettled([loadEnergy(),loadAccess(),loadHouseholdData()]);
  tasks.forEach((t,i)=>{
   if(t.status==="rejected"){
    console.error("Dataset task failed:",i,t.reason);
-   if(i===0)$("energyStatus").textContent="Energy data unavailable: "+t.reason.message;
-   if(i===1)$("accessStatus").textContent="Access data unavailable: "+t.reason.message;
+   if(i===0){$("energyStatus").textContent="Energy data unavailable: "+(t.reason?.message||t.reason);$("energyStatus").className="status bad";}
+   if(i===1){$("accessStatus").textContent="Access data unavailable: "+(t.reason?.message||t.reason);$("accessStatus").className="status bad";}
   }
  });
- updateDashboard();
- applyChoropleth();
- $("headerStatus").textContent="Global dashboard ready";
+ updateDashboard();applyChoropleth();
+ $("headerStatus").textContent=boundaryOK?"Ready • "+Object.keys(countryNameByISO).length+" countries":"Data loaded; country boundaries unavailable";
 }
 initialise();
 </script>
