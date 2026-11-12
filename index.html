@@ -653,11 +653,11 @@ function parseHouseholdWorkbook(buffer){
 }
 
 function parseHouseholdCSVText(raw){
- const lines=raw.replace(/^\\uFEFF/,"").split(/\\r?\\n/);
+ const lines=raw.replace(/^\uFEFF/,"").split(/\r?\n/);
  let headerIndex=lines.findIndex(line=>{const n=norm(line);return n.includes("country")&&(n.includes("averagehouseholdsize")||n.includes("householdsize"));});
  if(headerIndex<0)headerIndex=lines.findIndex(line=>norm(line).startsWith("country,"));
  if(headerIndex<0)throw new Error("Could not locate a country and household-size header in the CSV.");
- return Papa.parse(lines.slice(headerIndex).join("\\n"),{header:true,skipEmptyLines:true,dynamicTyping:false}).data||[];
+ return Papa.parse(lines.slice(headerIndex).join("\n"),{header:true,skipEmptyLines:true,dynamicTyping:false}).data||[];
 }
 
 function parseHouseholdRows(rows){
@@ -688,7 +688,7 @@ async function loadHouseholdData(url=URLS.households){
   if(!response.ok)throw new Error("Workbook request failed: HTTP "+response.status);
   const buffer=await response.arrayBuffer();
   if(buffer.byteLength<1000)throw new Error("The downloaded file is empty or incomplete.");
-  if(/\\.csv(?:$|\\?)/i.test(url)){
+  if(/\.csv(?:$|\?)/i.test(url)){
    const rows=parseHouseholdCSVText(new TextDecoder("utf-8").decode(buffer));
    parseHouseholdRows(rows);
   }else{
