@@ -1,0 +1,1010 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SILKYSINGZ GEOAI | Global Electricity Intelligence</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+<style>
+:root{
+ --bg:#07111d;--panel:#101d2b;--panel2:#142538;--line:#26394c;
+ --text:#e8f1f8;--muted:#91a6b9;--cyan:#26d9e8;--pink:#ff5b9d;
+ --gold:#ffc66d;--green:#48d7a0;--red:#ff7272;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);
+ font-family:Inter,Segoe UI,Arial,sans-serif}
+body{overflow:hidden}
+header{
+ height:66px;display:flex;align-items:center;justify-content:space-between;
+ padding:0 20px;background:#0b1724;border-bottom:1px solid var(--line);
+}
+.brand{font-weight:900;letter-spacing:1px;color:var(--cyan);font-size:17px}
+.subtitle{font-size:11px;color:var(--muted);margin-top:4px}
+.header-right{font-size:11px;color:var(--muted);text-align:right}
+.dashboard{
+ height:calc(100vh - 66px);
+ display:grid;grid-template-columns:minmax(260px,1fr) minmax(380px,1fr) minmax(260px,1fr);
+ gap:10px;padding:10px;min-height:0;
+}
+.panel{
+ background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ min-width:0;min-height:0;overflow-y:auto;scrollbar-width:thin;
+ scrollbar-color:#35516b transparent;padding:13px;
+}
+.panel h2{font-size:13px;color:var(--cyan);letter-spacing:1px;margin:2px 0 13px}
+.section{border-bottom:1px solid var(--line);padding:11px 0}
+.section:last-child{border-bottom:0}
+.section-title{font-size:11px;color:var(--gold);font-weight:800;
+ letter-spacing:.8px;margin-bottom:9px;text-transform:uppercase}
+label{display:block;font-size:11px;color:var(--muted);margin:9px 0 5px}
+select,input,button{
+ width:100%;background:#0a1724;color:var(--text);border:1px solid #30465b;
+ border-radius:7px;padding:9px;font-size:12px;outline:none;
+}
+button{cursor:pointer;background:#123246;border-color:#1b6270;color:#bdf8ff;font-weight:700}
+button:hover{background:#17485c}
+button.secondary{background:#172638;border-color:#34485c;color:#d8e5ef}
+button.warning{background:#3c2630;border-color:#754256;color:#ffc5d8}
+.button-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px}
+.check{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text);margin:8px 0}
+.check input{width:auto}
+#map{height:100%;width:100%;border-radius:10px;background:#0a1724}
+.map-panel{padding:0;overflow:hidden;position:relative}
+.map-overlay{
+ position:absolute;z-index:500;top:12px;left:12px;right:12px;
+ pointer-events:none;display:flex;justify-content:space-between;gap:8px;
+}
+.map-chip{background:#07111de8;border:1px solid #35516b;border-radius:7px;
+ padding:7px 10px;font-size:10px;color:#dcebf4;max-width:70%}
+.map-chip strong{color:var(--cyan)}
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px}
+.kpi .name{font-size:10px;color:var(--muted)}
+.kpi .value{font-size:18px;font-weight:800;margin-top:5px;color:var(--cyan);overflow-wrap:anywhere}
+.kpi .unit{font-size:9px;color:var(--muted);margin-top:3px}
+.chartbox{background:#0b1724;border:1px solid var(--line);border-radius:9px;
+ padding:10px;margin:9px 0;height:220px}
+.chartbox canvas{width:100%!important;height:175px!important}
+.status{font-size:10px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+.status.good{color:var(--green)}.status.bad{color:var(--red)}
+.small{font-size:10px;color:var(--muted);line-height:1.5}
+.legend-row{display:flex;align-items:center;gap:7px;font-size:10px;margin:6px 0;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+footer{font-size:9px;color:#71869a;line-height:1.5;margin-top:10px}
+.leaflet-control-attribution{font-size:9px!important}
+@media(max-width:950px){
+ body{overflow:auto}
+ header{height:auto;min-height:66px}
+ .dashboard{height:auto;display:flex;flex-direction:column}
+ .panel{overflow:visible;min-height:300px}
+ .map-panel{height:65vh;min-height:450px;order:0}
+ #map{height:100%}
+}
+</style>
+</head>
+
+<body>
+<header>
+ <div>
+  <div class="brand">SILKYSINGZ GEOAI</div>
+  <div class="subtitle">GLOBAL ELECTRICITY • POPULATION • HOUSEHOLDS • POWER INFRASTRUCTURE</div>
+ </div>
+ <div class="header-right">
+  GLOBAL ENERGY INTELLIGENCE<br>
+  <span id="headerStatus">Connecting to online datasets...</span>
+ </div>
+</header>
+
+<div class="dashboard">
+
+<!-- LEFT: CONTROLS -->
+<aside class="panel">
+ <h2>01 / CONTROLS</h2>
+
+ <div class="section">
+  <div class="section-title">Country and year</div>
+  <label for="countrySelect">Select country</label>
+  <select id="countrySelect"><option value="GMB">The Gambia</option></select>
+
+  <label for="yearSelect">Data year</label>
+  <select id="yearSelect"><option value="latest">Latest available</option></select>
+
+  <div class="button-row">
+   <button id="resetBtn" class="secondary">Reset map</button>
+   <button id="refreshBtn">Refresh data</button>
+  </div>
+ </div>
+
+ <div class="section">
+  <div class="section-title">Map theme</div>
+  <label for="themeSelect">Thematic layer</label>
+  <select id="themeSelect">
+   <option value="population">Population</option>
+   <option value="generation">Electricity generation</option>
+   <option value="consumption">Electricity consumption</option>
+   <option value="renewables">Renewable electricity share</option>
+   <option value="access">Electricity access</option>
+   <option value="households">Estimated households</option>
+  </select>
+
+  <label for="baseSelect">Basemap</label>
+  <select id="baseSelect">
+   <option value="dark">Dark</option>
+   <option value="satellite">Satellite</option>
+   <option value="street">Street</option>
+   <option value="terrain">Terrain</option>
+  </select>
+ </div>
+
+ <div class="section">
+  <div class="section-title">Visible power infrastructure</div>
+  <div class="small">Load infrastructure for the current map extent. Zoom in to a regional or country scale before requesting data.</div>
+  <label class="check"><input type="checkbox" id="showPower" checked> Display loaded infrastructure</label>
+  <label class="check"><input type="checkbox" id="autoPower"> Automatically reload after map movement</label>
+  <div class="button-row">
+   <button id="loadPowerBtn">Load visible infrastructure</button>
+   <button id="clearPowerBtn" class="secondary">Clear infrastructure</button>
+  </div>
+  <div id="powerStatus" class="status">Infrastructure not loaded.</div>
+  <div class="legend-row"><span class="dot" style="background:#ffca62"></span> Power lines / cables</div>
+  <div class="legend-row"><span class="dot" style="background:#ff5b9d"></span> Power plants / generators</div>
+  <div class="legend-row"><span class="dot" style="background:#26d9e8"></span> Substations / transformers</div>
+  <div class="legend-row"><span class="dot" style="background:#a98cff"></span> Towers / poles</div>
+  <button id="exportPowerBtn" class="secondary">Export visible infrastructure GeoJSON</button>
+ </div>
+
+ <div class="section">
+  <div class="section-title">Global households</div>
+  <div class="small">Automatically retrieved from the UN DESA 2026 household-size compilation. Household totals are estimated from population and average household size.</div>
+  <div id="householdStatus" class="status">Loading household data online...</div>
+  <label for="householdURL">Optional alternative household CSV URL</label>
+  <input id="householdURL" placeholder="Optional public CSV URL">
+  <button id="loadHouseholdURL" class="secondary">Load alternative CSV</button>
+  <div class="small" style="margin-top:8px">
+   Formula: population ÷ average household size. The reference year is shown separately. Estimates are not official census household counts.
+  </div>
+ </div>
+
+ <div class="section">
+  <div class="section-title">Data sources</div>
+  <div class="small">
+   • Our World in Data — Energy<br>
+   • Our World in Data — Electricity access<br>
+   • UN DESA — Household Size and Composition 2026<br>
+   • OpenStreetMap — Power infrastructure<br>
+   • Geo-Countries — Country boundaries
+  </div>
+  <footer>
+   Infrastructure completeness varies by country. Missing mapped features do not mean that infrastructure does not exist.
+  </footer>
+ </div>
+</aside>
+
+<!-- CENTRE: MAP -->
+<main class="panel map-panel">
+ <div id="map"></div>
+ <div class="map-overlay">
+  <div class="map-chip"><strong>GLOBAL POWER MAP</strong><br><span id="mapThemeLabel">Population distribution</span></div>
+  <div class="map-chip" id="selectedCountryChip">Selected: The Gambia</div>
+ </div>
+</main>
+
+<!-- RIGHT: ANALYTICS -->
+<aside class="panel">
+ <h2>02 / ANALYTICS</h2>
+
+ <div class="section">
+  <div class="section-title">Country indicators</div>
+  <div class="kpi-grid">
+   <div class="kpi"><div class="name">Population</div><div class="value" id="kPopulation">—</div><div class="unit">persons</div></div>
+   <div class="kpi"><div class="name">Estimated households</div><div class="value" id="kHouseholds">—</div><div class="unit">modelled from average household size</div></div>
+   <div class="kpi"><div class="name">Electricity generation</div><div class="value" id="kGeneration">—</div><div class="unit">TWh</div></div>
+   <div class="kpi"><div class="name">Electricity consumption</div><div class="value" id="kConsumption">—</div><div class="unit">TWh</div></div>
+   <div class="kpi"><div class="name">Electricity access</div><div class="value" id="kAccess">—</div><div class="unit">% of population</div></div>
+   <div class="kpi"><div class="name">Average household size</div><div class="value" id="kHHSize">—</div><div class="unit">persons per household</div></div>
+   <div class="kpi"><div class="name">Renewable share</div><div class="value" id="kRenewables">—</div><div class="unit">% of electricity</div></div>
+   <div class="kpi"><div class="name">Consumption per capita</div><div class="value" id="kPerCapita">—</div><div class="unit">kWh/person/year</div></div>
+  </div>
+  <div class="small" id="dataYearNote" style="margin-top:8px">Selected data year: —</div>
+ </div>
+
+ <div class="section">
+  <div class="section-title">Electricity generation mix</div>
+  <div class="chartbox"><canvas id="mixChart"></canvas></div>
+ </div>
+
+ <div class="section">
+  <div class="section-title">Generation and consumption trend</div>
+  <div class="chartbox"><canvas id="trendChart"></canvas></div>
+ </div>
+
+ <div class="section">
+  <div class="section-title">Population and estimated households</div>
+  <div class="chartbox"><canvas id="populationChart"></canvas></div>
+ </div>
+
+ <div class="section">
+  <div class="section-title">Global country comparison</div>
+  <div class="chartbox"><canvas id="rankingChart"></canvas></div>
+ </div>
+
+ <div class="section">
+  <div class="section-title">Data status and methodology</div>
+  <div id="energyStatus" class="status">Energy dataset loading...</div>
+  <div id="accessStatus" class="status">Electricity access dataset loading...</div>
+  <div id="globalHouseholdStatus" class="status">Household dataset loading...</div>
+  <div class="small" style="margin-top:9px">
+   Population is taken from the energy dataset where available. Household totals are estimates using the latest available average household-size reading for each country. The household reference year may differ from the selected energy year.
+  </div>
+  <div class="button-row">
+   <button id="exportCountryBtn">Export country data CSV</button>
+   <button id="exportEnergyBtn" class="secondary">Export energy CSV</button>
+  </div>
+ </div>
+
+ <footer>
+  Produced by Ansu Singhateh | GIS Analyst | GIS / Cartography Unit | Gambia Bureau of Statistics<br>
+  SILKYSINGZ GEOAI • Research and educational use
+ </footer>
+</aside>
+</div>
+
+<script>
+"use strict";
+
+/* ==========================================================
+   DATA SOURCES
+========================================================== */
+const URLS = {
+ countries: "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson",
+ energy: "https://catalog.ourworldindata.org/energy/owid_energy/owid_energy.csv",
+ access: "https://ourworldindata.org/grapher/share-of-the-population-with-access-to-electricity.csv?csvType=full&useColumnShortNames=false",
+ households: "https://nationsinquiry.com/datasets/household-size/2026/data.csv"
+};
+
+const OVERPASS = [
+ "https://overpass.kumi.systems/api/interpreter",
+ "https://overpass.private.coffee/api/interpreter",
+ "https://overpass-api.de/api/interpreter"
+];
+
+const $ = id => document.getElementById(id);
+const fmt = (v,d=1) => Number.isFinite(Number(v)) ? Number(v).toLocaleString(undefined,{maximumFractionDigits:d}) : "—";
+const compact = v => {
+ if(!Number.isFinite(Number(v))) return "—";
+ const n=Number(v);
+ if(Math.abs(n)>=1e12)return (n/1e12).toFixed(2)+"T";
+ if(Math.abs(n)>=1e9)return (n/1e9).toFixed(2)+"B";
+ if(Math.abs(n)>=1e6)return (n/1e6).toFixed(2)+"M";
+ if(Math.abs(n)>=1e3)return (n/1e3).toFixed(1)+"K";
+ return n.toFixed(1);
+};
+const number = v => {
+ if(v===null||v===undefined||v==="")return null;
+ const n=Number(String(v).replace(/,/g,""));
+ return Number.isFinite(n)?n:null;
+};
+const norm = s => String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+
+let countryGeo=null, energyRows=[], accessRows=[];
+let householdByISO={}, householdRows=[];
+let energyByISO={}, accessByISO={};
+let selectedISO="GMB", selectedYear="latest";
+let powerFeatures=[], powerLayer=null;
+let baseLayers={}, currentBase=null;
+let countryLayer=null;
+let charts={};
+let countryByISO={};
+let countryNameByISO={};
+let countryFeatureByISO={};
+
+/* ==========================================================
+   MAP
+========================================================== */
+const map=L.map("map",{zoomControl:true,worldCopyJump:true}).setView([20,0],2);
+
+baseLayers.dark=L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{
+ attribution:"© OpenStreetMap © CARTO",maxZoom:19
+});
+baseLayers.satellite=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{
+ attribution:"Tiles © Esri",maxZoom:19
+});
+baseLayers.street=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+ attribution:"© OpenStreetMap contributors",maxZoom:19
+});
+baseLayers.terrain=L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",{
+ attribution:"© OpenTopoMap",maxZoom:17
+});
+setBase("dark");
+
+function setBase(name){
+ if(currentBase)map.removeLayer(currentBase);
+ currentBase=baseLayers[name]||baseLayers.dark;
+ currentBase.addTo(map);
+}
+
+function countryISO(p){
+ return String(p.ISO_A3||p.ADM0_A3||p.iso_a3||p.ISO3||"").toUpperCase();
+}
+function countryName(p){
+ return p.ADMIN||p.name||p.NAME||p.SOVEREIGNT||"Unknown";
+}
+
+function getMetric(iso){
+ const r=getSelectedRecord(iso);
+ const theme=$("themeSelect").value;
+ if(theme==="population")return r?.population;
+ if(theme==="generation")return r?.generation;
+ if(theme==="consumption")return r?.consumption;
+ if(theme==="renewables")return r?.renewableShare;
+ if(theme==="access")return getAccess(iso);
+ if(theme==="households")return getHouseholdEstimate(iso,r?.population)?.estimated;
+ return null;
+}
+
+function colorScale(v,min,max){
+ if(!Number.isFinite(v))return "#27384a";
+ const t=max===min?0.5:Math.max(0,Math.min(1,(v-min)/(max-min)));
+ const colors=["#163b59","#176b83","#20a9a7","#7ed38a","#f3d36c","#f18b58","#e54c77"];
+ const i=t*(colors.length-1),a=Math.floor(i),b=Math.min(colors.length-1,a+1),f=i-a;
+ const hex=c=>[parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),parseInt(c.slice(5,7),16)];
+ const A=hex(colors[a]),B=hex(colors[b]);
+ return "#"+A.map((x,j)=>Math.round(x+(B[j]-x)*f).toString(16).padStart(2,"0")).join("");
+}
+
+function applyChoropleth(){
+ if(!countryGeo||!countryLayer)return;
+ const theme=$("themeSelect").value;
+ const values=countryGeo.features.map(f=>getMetric(countryISO(f.properties))).filter(v=>Number.isFinite(v)&&v>=0);
+ const min=values.length?Math.min(...values):0;
+ const max=values.length?Math.max(...values):1;
+
+ countryLayer.setStyle(feature=>{
+  const iso=countryISO(feature.properties);
+  const v=getMetric(iso);
+  return {
+   fillColor:colorScale(v,min,max),
+   weight:iso===selectedISO?2:0.5,
+   color:iso===selectedISO?"#ffffff":"#647b8e",
+   opacity:0.9,fillOpacity:0.78
+  };
+ });
+ $("mapThemeLabel").textContent={
+  population:"Population distribution",
+  generation:"Electricity generation (TWh)",
+  consumption:"Electricity consumption (TWh)",
+  renewables:"Renewable electricity share (%)",
+  access:"Electricity access (%)",
+  households:"Estimated households"
+ }[theme];
+}
+
+function selectCountry(iso){
+ if(!iso||!countryNameByISO[iso])return;
+ selectedISO=iso;
+ $("countrySelect").value=iso;
+ $("selectedCountryChip").textContent="Selected: "+countryNameByISO[iso];
+ updateDashboard();
+ applyChoropleth();
+}
+
+async function loadCountries(){
+ const r=await fetch(URLS.countries);
+ if(!r.ok)throw new Error("Country boundary download failed: HTTP "+r.status);
+ countryGeo=await r.json();
+
+ countryGeo.features.forEach(f=>{
+  const iso=countryISO(f.properties);
+  if(!iso||iso==="-99")return;
+  const name=countryName(f.properties);
+  countryByISO[iso]=f;
+  countryNameByISO[iso]=name;
+  countryFeatureByISO[iso]=f;
+ });
+
+ countryLayer=L.geoJSON(countryGeo,{
+  style:{color:"#647b8e",weight:.5,fillColor:"#1b526d",fillOpacity:.65},
+  onEachFeature:(feature,layer)=>{
+   const iso=countryISO(feature.properties);
+   const name=countryName(feature.properties);
+   layer.bindTooltip(name);
+   layer.on("click",()=>selectCountry(iso));
+  }
+ }).addTo(map);
+
+ const select=$("countrySelect");
+ select.innerHTML="";
+ Object.entries(countryNameByISO).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([iso,name])=>{
+  const o=document.createElement("option");o.value=iso;o.textContent=name;select.appendChild(o);
+ });
+ select.value=selectedISO;
+ applyChoropleth();
+}
+
+/* ==========================================================
+   CSV LOADING AND FLEXIBLE FIELD DETECTION
+========================================================== */
+async function fetchCSV(url){
+ const response=await fetch(url,{cache:"no-cache"});
+ if(!response.ok)throw new Error("HTTP "+response.status);
+ const text=await response.text();
+ const parsed=Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:false});
+ if(parsed.errors?.length)console.warn("CSV parse warnings:",parsed.errors.slice(0,3));
+ return parsed.data||[];
+}
+
+function findKey(row,patterns){
+ const keys=Object.keys(row||{});
+ for(const p of patterns){
+  const k=keys.find(x=>norm(x)===norm(p));
+  if(k)return k;
+ }
+ for(const p of patterns){
+  const k=keys.find(x=>norm(x).includes(norm(p)));
+  if(k)return k;
+ }
+ return null;
+}
+function val(row,patterns){
+ const k=findKey(row,patterns);
+ return k?number(row[k]):null;
+}
+function rowISO(row){
+ const k=findKey(row,["iso_code","iso3","code","country_code","alpha3"]);
+ let iso=k?String(row[k]||"").trim().toUpperCase():"";
+ if(iso.length===3&&iso!=="OWID_WRL")return iso;
+ const nameKey=findKey(row,["country","entity","country_name","name"]);
+ const name=nameKey?norm(row[nameKey]):"";
+ const match=Object.entries(countryNameByISO).find(([code,n])=>norm(n)===name);
+ return match?match[0]:null;
+}
+function rowYear(row){
+ const k=findKey(row,["year"]);
+ return k?number(row[k]):null;
+}
+function rowEntity(row){
+ const k=findKey(row,["country","entity","country_name","name"]);
+ return k?String(row[k]):"";
+}
+
+function detectEnergyFields(row){
+ return {
+  population:["population"],
+  generation:["electricity_generation","electricity generation","electricity_generation_twh"],
+  consumption:["electricity_demand","electricity_consumption","electricity demand","electricity consumption"],
+  renewableShare:["electricity_share_renewables","renewables_share_electricity","renewable_share_electricity","electricity share renewables"],
+  fossilShare:["electricity_share_fossil","fossil_share_electricity","electricity fossil share"],
+  solar:["solar_electricity","solar electricity"],
+  wind:["wind_electricity","wind electricity"],
+  hydro:["hydro_electricity","hydropower_consumption","hydro electricity"],
+  nuclear:["nuclear_electricity","nuclear electricity"],
+  coal:["coal_electricity","coal electricity"],
+  gas:["gas_electricity","gas electricity"],
+  oil:["oil_electricity","oil electricity"],
+  biofuel:["biofuel_electricity","biofuel electricity"],
+  other:["other_renewable_electricity","other renewables electricity"]
+ };
+}
+const ENERGY_FIELDS=detectEnergyFields({});
+
+function parseEnergyRow(row){
+ const year=rowYear(row),iso=rowISO(row);
+ if(!iso||!year)return null;
+ const get=key=>val(row,ENERGY_FIELDS[key]);
+ return {
+  iso,entity:rowEntity(row),year,
+  population:get("population"),
+  generation:get("generation"),
+  consumption:get("consumption"),
+  renewableShare:get("renewableShare"),
+  fossilShare:get("fossilShare"),
+  solar:get("solar"),wind:get("wind"),hydro:get("hydro"),
+  nuclear:get("nuclear"),coal:get("coal"),gas:get("gas"),
+  oil:get("oil"),biofuel:get("biofuel"),other:get("other")
+ };
+}
+
+async function loadEnergy(){
+ $("energyStatus").textContent="Downloading global energy dataset...";
+ const rows=await fetchCSV(URLS.energy);
+ energyRows=rows.map(parseEnergyRow).filter(Boolean);
+ energyByISO={};
+ energyRows.forEach(r=>{
+  if(!energyByISO[r.iso])energyByISO[r.iso]=[];
+  energyByISO[r.iso].push(r);
+ });
+ Object.values(energyByISO).forEach(a=>a.sort((x,y)=>x.year-y.year));
+ if(!energyRows.length)throw new Error("No usable country/year records. Dataset columns may have changed.");
+ $("energyStatus").textContent="Loaded "+energyRows.length.toLocaleString()+" country-year energy records.";
+ $("energyStatus").className="status good";
+
+ const years=[...new Set(energyRows.map(r=>r.year))].sort((a,b)=>b-a);
+ $("yearSelect").innerHTML='<option value="latest">Latest available</option>';
+ years.forEach(y=>{
+  const o=document.createElement("option");o.value=y;o.textContent=y;$("yearSelect").appendChild(o);
+ });
+ selectedYear="latest";
+}
+
+async function loadAccess(){
+ $("accessStatus").textContent="Downloading electricity access data...";
+ const rows=await fetchCSV(URLS.access);
+ accessRows=[];
+ accessByISO={};
+
+ rows.forEach(row=>{
+  const iso=rowISO(row),year=rowYear(row);
+  if(!iso||!year)return;
+  const excluded=["entity","code","year"];
+  const valueKey=Object.keys(row).find(k=>!excluded.includes(norm(k))&&number(row[k])!==null);
+  if(!valueKey)return;
+  const item={iso,year,value:number(row[valueKey])};
+  accessRows.push(item);
+  if(!accessByISO[iso])accessByISO[iso]=[];
+  accessByISO[iso].push(item);
+ });
+ Object.values(accessByISO).forEach(a=>a.sort((x,y)=>x.year-y.year));
+ $("accessStatus").textContent="Loaded electricity-access records for "+Object.keys(accessByISO).length+" countries.";
+ $("accessStatus").className="status good";
+}
+
+/* ==========================================================
+   HOUSEHOLD DATA — UN DESA 2026
+========================================================== */
+function parseHouseholdCSVText(raw){
+ const lines=raw.replace(/^\uFEFF/,"").split(/\r?\n/);
+ // The download includes source notes before its CSV header.
+ let headerIndex=lines.findIndex(line=>{
+  const n=norm(line);
+  return n.includes("country")&&
+    (n.includes("averagehouseholdsize")||n.includes("householdsize"));
+ });
+ if(headerIndex<0)headerIndex=lines.findIndex(line=>norm(line).startsWith("country,"));
+ if(headerIndex<0)throw new Error("Could not locate the household CSV header.");
+
+ const csv=Papa.parse(lines.slice(headerIndex).join("\n"),{
+  header:true,skipEmptyLines:true,dynamicTyping:false
+ });
+ return csv.data||[];
+}
+
+function parseHouseholdRows(rows){
+ householdRows=[];
+ householdByISO={};
+
+ rows.forEach(row=>{
+  const isoKey=findKey(row,["iso3","iso_code","iso","alpha3","country_code","code"]);
+  const nameKey=findKey(row,["country","countryname","name"]);
+  const sizeKey=findKey(row,["average_household_size","average household size","household_size","average_size","size"]);
+  const yearKey=findKey(row,["reference_year","reference year","year"]);
+  const sourceKey=findKey(row,["source","type_of_source","source_type"]);
+
+  let iso=isoKey?String(row[isoKey]||"").trim().toUpperCase():"";
+  if(!iso&&nameKey){
+   const n=norm(row[nameKey]);
+   const found=Object.entries(countryNameByISO).find(([code,name])=>norm(name)===n);
+   if(found)iso=found[0];
+  }
+  const size=sizeKey?number(row[sizeKey]):null;
+  if(!iso||!Number.isFinite(size)||size<=0)return;
+
+  const item={
+   iso,
+   country:nameKey?String(row[nameKey]):countryNameByISO[iso]||iso,
+   averageSize:size,
+   year:yearKey?number(row[yearKey]):null,
+   source:sourceKey?String(row[sourceKey]):"UN DESA"
+  };
+  householdByISO[iso]=item;
+  householdRows.push(item);
+ });
+}
+
+async function loadHouseholdData(url=URLS.households){
+ $("householdStatus").textContent="Connecting to UN DESA household-size data...";
+ $("globalHouseholdStatus").textContent="Loading household-size data...";
+ try{
+  const response=await fetch(url,{cache:"no-cache"});
+  if(!response.ok)throw new Error("HTTP "+response.status);
+  const raw=await response.text();
+  const rows=parseHouseholdCSVText(raw);
+  parseHouseholdRows(rows);
+  if(!householdRows.length)throw new Error("No country household-size records were recognised.");
+
+  householdRows.sort((a,b)=>a.country.localeCompare(b.country));
+  $("householdStatus").textContent="Loaded average household size for "+householdRows.length+" countries. UN DESA 2026 compilation.";
+  $("householdStatus").className="status good";
+  $("globalHouseholdStatus").textContent="Household-size data loaded for "+householdRows.length+" countries.";
+  $("globalHouseholdStatus").className="status good";
+  updateDashboard();
+  applyChoropleth();
+ }catch(err){
+  console.error("Household data error:",err);
+  $("householdStatus").textContent="Household source unavailable: "+err.message;
+  $("householdStatus").className="status bad";
+  $("globalHouseholdStatus").textContent="Household data unavailable. Check network/CORS or source availability.";
+  $("globalHouseholdStatus").className="status bad";
+ }
+}
+
+function getHouseholdEstimate(iso,population){
+ const h=householdByISO[iso];
+ if(!h||!Number.isFinite(population)||population<=0)return null;
+ return {
+  estimated:population/h.averageSize,
+  averageSize:h.averageSize,
+  referenceYear:h.year,
+  source:h.source
+ };
+}
+
+/* ==========================================================
+   COUNTRY / YEAR DATA
+========================================================== */
+function getSelectedRecord(iso){
+ const arr=energyByISO[iso]||[];
+ if(!arr.length)return null;
+ if(selectedYear==="latest")return arr[arr.length-1];
+ const exact=arr.find(r=>r.year===Number(selectedYear));
+ return exact||null;
+}
+function getAccess(iso){
+ const arr=accessByISO[iso]||[];
+ if(!arr.length)return null;
+ const energy=getSelectedRecord(iso);
+ const targetYear=energy?.year;
+ if(targetYear){
+  const exact=arr.find(r=>r.year===targetYear);
+  if(exact)return exact.value;
+  const prior=arr.filter(r=>r.year<=targetYear);
+  if(prior.length)return prior[prior.length-1].value;
+ }
+ return arr[arr.length-1].value;
+}
+
+function getCountrySeries(iso){
+ return energyByISO[iso]||[];
+}
+
+function updateDashboard(){
+ const r=getSelectedRecord(selectedISO);
+ const name=countryNameByISO[selectedISO]||selectedISO;
+ const access=getAccess(selectedISO);
+ const hh=getHouseholdEstimate(selectedISO,r?.population);
+
+ $("selectedCountryChip").textContent="Selected: "+name;
+ $("kPopulation").textContent=compact(r?.population);
+ $("kHouseholds").textContent=compact(hh?.estimated);
+ $("kGeneration").textContent=fmt(r?.generation,2);
+ $("kConsumption").textContent=fmt(r?.consumption,2);
+ $("kAccess").textContent=access===null?"—":fmt(access,1)+"%";
+ $("kHHSize").textContent=hh?fmt(hh.averageSize,2):"—";
+ $("kRenewables").textContent=r?.renewableShare===null||r?.renewableShare===undefined?"—":fmt(r.renewableShare,1)+"%";
+
+ const perCapita=(r?.consumption!==null&&r?.consumption!==undefined&&r?.population>0)
+  ?r.consumption*1e9/r.population*1000:null;
+ $("kPerCapita").textContent=perCapita===null?"—":fmt(perCapita,0);
+ $("dataYearNote").textContent="Energy year: "+(r?.year??"Not available")+
+  " | Household-size reference: "+(hh?.referenceYear??"Not available");
+
+ renderCharts(selectedISO);
+ applyChoropleth();
+}
+
+/* ==========================================================
+   CHARTS
+========================================================== */
+function makeChart(id,type,data,options={}){
+ if(charts[id])charts[id].destroy();
+ charts[id]=new Chart($(id),{
+  type,data,
+  options:{
+   responsive:true,maintainAspectRatio:false,
+   plugins:{legend:{labels:{color:"#b9c9d8",font:{size:9}}}},
+   scales:type==="doughnut"?{}:{
+    x:{ticks:{color:"#91a6b9",font:{size:9}},grid:{color:"#243648"}},
+    y:{ticks:{color:"#91a6b9",font:{size:9}},grid:{color:"#243648"}}
+   },
+   ...options
+  }
+ });
+}
+
+function renderCharts(iso){
+ const r=getSelectedRecord(iso);
+ const mixLabels=["Solar","Wind","Hydro","Nuclear","Coal","Gas","Oil","Biofuel","Other"];
+ const mixValues=r?[r.solar,r.wind,r.hydro,r.nuclear,r.coal,r.gas,r.oil,r.biofuel,r.other].map(v=>v||0):[];
+ makeChart("mixChart","doughnut",{
+  labels:mixLabels,
+  datasets:[{data:mixValues,backgroundColor:["#ffd166","#4dd6e5","#3995dc","#a98cff","#777f8c","#f18b58","#ff5b9d","#48d7a0","#c5d0db"],borderWidth:0}]
+ });
+
+ const series=getCountrySeries(iso);
+ const recent=series.slice(-25);
+ makeChart("trendChart","line",{
+  labels:recent.map(x=>x.year),
+  datasets:[
+   {label:"Generation (TWh)",data:recent.map(x=>x.generation),borderColor:"#26d9e8",backgroundColor:"#26d9e8",tension:.25,spanGaps:true},
+   {label:"Consumption / demand (TWh)",data:recent.map(x=>x.consumption),borderColor:"#ff5b9d",backgroundColor:"#ff5b9d",tension:.25,spanGaps:true}
+  ]
+ });
+
+ const populationSeries=recent.map(x=>x.population);
+ const householdSeries=recent.map(x=>{
+  const h=getHouseholdEstimate(iso,x.population);
+  return h?h.estimated:null;
+ });
+ makeChart("populationChart","line",{
+  labels:recent.map(x=>x.year),
+  datasets:[
+   {label:"Population",data:populationSeries,borderColor:"#ffc66d",backgroundColor:"#ffc66d",tension:.25,yAxisID:"y"},
+   {label:"Estimated households",data:householdSeries,borderColor:"#48d7a0",backgroundColor:"#48d7a0",tension:.25,yAxisID:"y1"}
+  ]
+ },{
+  scales:{
+   x:{ticks:{color:"#91a6b9"},grid:{color:"#243648"}},
+   y:{position:"left",ticks:{color:"#91a6b9",callback:v=>compact(v)},grid:{color:"#243648"}},
+   y1:{position:"right",ticks:{color:"#91a6b9",callback:v=>compact(v)},grid:{drawOnChartArea:false}}
+  }
+ });
+
+ const top=energyRows.filter(x=>x.year===(getSelectedRecord(iso)?.year||0)&&x.generation!==null)
+  .sort((a,b)=>b.generation-a.generation).slice(0,10).reverse();
+ makeChart("rankingChart","bar",{
+  labels:top.map(x=>countryNameByISO[x.iso]||x.entity||x.iso),
+  datasets:[{label:"Generation (TWh)",data:top.map(x=>x.generation),backgroundColor:"#26d9e8"}]
+ },{
+  indexAxis:"y",
+  plugins:{legend:{display:false}}
+ });
+}
+
+/* ==========================================================
+   POWER INFRASTRUCTURE — VISIBLE MAP EXTENT ONLY
+========================================================== */
+function powerStyle(feature){
+ const t=feature.properties||{};
+ const p=t.power||"";
+ if(["line","minor_line","cable"].includes(p))return {color:"#ffca62",weight:2,opacity:.85};
+ if(["plant","generator"].includes(p))return {color:"#ff5b9d",weight:2,fillColor:"#ff5b9d",fillOpacity:.7,radius:7};
+ if(["substation","transformer"].includes(p))return {color:"#26d9e8",weight:2,fillColor:"#26d9e8",fillOpacity:.8,radius:6};
+ return {color:"#a98cff",weight:2,fillColor:"#a98cff",fillOpacity:.8,radius:4};
+}
+
+function osmToGeoJSON(elements){
+ const features=[];
+ elements.forEach(el=>{
+  const tags=el.tags||{};
+  if(!tags.power)return;
+  if(el.type==="node"&&el.lat!==undefined&&el.lon!==undefined){
+   features.push({
+    type:"Feature",properties:{...tags,osm_type:el.type,osm_id:el.id},
+    geometry:{type:"Point",coordinates:[el.lon,el.lat]}
+   });
+  }else if(el.type==="way"&&el.geometry&&el.geometry.length){
+   const coords=el.geometry.map(p=>[p.lon,p.lat]);
+   const isArea=coords.length>3&&coords[0][0]===coords.at(-1)[0]&&coords[0][1]===coords.at(-1)[1]
+    &&["plant","substation"].includes(tags.power);
+   features.push({
+    type:"Feature",properties:{...tags,osm_type:el.type,osm_id:el.id},
+    geometry:isArea?{type:"Polygon",coordinates:[coords]}:{type:"LineString",coordinates:coords}
+   });
+  }
+ });
+ return {type:"FeatureCollection",features};
+}
+
+async function loadVisiblePower(){
+ const z=map.getZoom(),b=map.getBounds();
+ if(z<5){
+  $("powerStatus").textContent="Zoom in to level 5 or closer before loading infrastructure.";
+  return;
+ }
+ const south=b.getSouth(),west=b.getWest(),north=b.getNorth(),east=b.getEast();
+ const area=(north-south)*(east-west);
+ if(area>650){
+  $("powerStatus").textContent="Map extent is too large. Zoom in to a smaller area and try again.";
+  return;
+ }
+ const bbox=`${south},${west},${north},${east}`;
+ const query=`[out:json][timeout:20];(
+  way["power"~"^(line|minor_line|cable)$"](${bbox});
+  node["power"~"^(plant|generator|substation|transformer|tower|pole)$"](${bbox});
+  way["power"~"^(plant|substation|transformer)$"](${bbox});
+ );out body geom;`;
+
+ $("powerStatus").textContent="Requesting power infrastructure for visible map extent...";
+ $("powerStatus").className="status";
+
+ let lastError=null;
+ for(const endpoint of OVERPASS){
+  try{
+   const response=await fetch(endpoint,{
+    method:"POST",
+    headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
+    body:"data="+encodeURIComponent(query)
+   });
+   if(!response.ok)throw new Error("HTTP "+response.status);
+   const json=await response.json();
+   const geo=osmToGeoJSON(json.elements||[]);
+   powerFeatures=geo.features;
+   renderPowerLayer();
+   $("powerStatus").textContent="Loaded "+powerFeatures.length.toLocaleString()+" mapped power features from OpenStreetMap.";
+   $("powerStatus").className="status good";
+   return;
+  }catch(e){
+   lastError=e;
+   console.warn("Overpass endpoint failed:",endpoint,e);
+  }
+ }
+ $("powerStatus").textContent="Infrastructure request failed: "+(lastError?.message||"No response")+". Try again later or zoom to a smaller area.";
+ $("powerStatus").className="status bad";
+}
+
+function renderPowerLayer(){
+ if(powerLayer)map.removeLayer(powerLayer);
+ if(!$("showPower").checked||!powerFeatures.length)return;
+ powerLayer=L.geoJSON({type:"FeatureCollection",features:powerFeatures},{
+  style:powerStyle,
+  pointToLayer:(feature,latlng)=>{
+   const s=powerStyle(feature);
+   return L.circleMarker(latlng,{...s,radius:s.radius||5});
+  },
+  onEachFeature:(feature,layer)=>{
+   const p=feature.properties||{};
+   const title=p.name||p.operator||p.power||"Power infrastructure";
+   layer.bindPopup("<b>"+escapeHTML(title)+"</b><br>Type: "+escapeHTML(p.power||"Unknown")+
+    (p.voltage?"<br>Voltage: "+escapeHTML(p.voltage):"")+
+    (p.operator?"<br>Operator: "+escapeHTML(p.operator):""));
+  }
+ }).addTo(map);
+}
+
+function escapeHTML(s){
+ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+/* ==========================================================
+   EXPORTS
+========================================================== */
+function downloadBlob(content,filename,type){
+ const blob=new Blob([content],{type});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement("a");
+ a.href=url;a.download=filename;a.click();
+ URL.revokeObjectURL(url);
+}
+function exportPower(){
+ if(!powerFeatures.length){alert("No infrastructure features are loaded.");return;}
+ downloadBlob(JSON.stringify({type:"FeatureCollection",features:powerFeatures},null,2),
+  "visible_power_infrastructure.geojson","application/geo+json");
+}
+function exportEnergy(){
+ if(!energyRows.length){alert("Energy dataset is not loaded.");return;}
+ const rows=energyRows.map(r=>({
+  iso3:r.iso,country:countryNameByISO[r.iso]||r.entity,year:r.year,
+  population:r.population,electricity_generation_TWh:r.generation,
+  electricity_consumption_TWh:r.consumption,
+  renewable_share_percent:r.renewableShare
+ }));
+ downloadBlob(Papa.unparse(rows),"global_electricity_energy.csv","text/csv");
+}
+function exportCountry(){
+ const r=getSelectedRecord(selectedISO);
+ if(!r){alert("No energy record is available for this country and year.");return;}
+ const h=getHouseholdEstimate(selectedISO,r.population);
+ const output=[{
+  iso3:selectedISO,country:countryNameByISO[selectedISO],year:r.year,
+  population:r.population,
+  average_household_size:h?.averageSize??null,
+  household_reference_year:h?.referenceYear??null,
+  estimated_households:h?.estimated??null,
+  electricity_generation_TWh:r.generation,
+  electricity_consumption_TWh:r.consumption,
+  electricity_access_percent:getAccess(selectedISO),
+  renewable_share_percent:r.renewableShare,
+  household_estimate_method:"Population divided by average household size"
+ }];
+ downloadBlob(Papa.unparse(output),"country_electricity_household_profile.csv","text/csv");
+}
+
+/* ==========================================================
+   EVENT HANDLERS
+========================================================== */
+$("countrySelect").addEventListener("change",e=>{
+ selectCountry(e.target.value);
+ const f=countryFeatureByISO[e.target.value];
+ if(f){
+  const layer=L.geoJSON(f);
+  map.fitBounds(layer.getBounds(),{maxZoom:6});
+ }
+});
+$("yearSelect").addEventListener("change",e=>{
+ selectedYear=e.target.value==="latest"?"latest":Number(e.target.value);
+ updateDashboard();
+});
+$("themeSelect").addEventListener("change",()=>{
+ applyChoropleth();
+ updateDashboard();
+});
+$("baseSelect").addEventListener("change",e=>setBase(e.target.value));
+$("loadPowerBtn").addEventListener("click",loadVisiblePower);
+$("clearPowerBtn").addEventListener("click",()=>{
+ powerFeatures=[];
+ if(powerLayer)map.removeLayer(powerLayer);
+ powerLayer=null;
+ $("powerStatus").textContent="Loaded infrastructure cleared.";
+});
+$("showPower").addEventListener("change",renderPowerLayer);
+$("exportPowerBtn").addEventListener("click",exportPower);
+$("exportEnergyBtn").addEventListener("click",exportEnergy);
+$("exportCountryBtn").addEventListener("click",exportCountry);
+$("loadHouseholdURL").addEventListener("click",()=>{
+ const url=$("householdURL").value.trim();
+ if(url)loadHouseholdData(url);
+ else alert("Enter a public CSV URL first.");
+});
+$("resetBtn").addEventListener("click",()=>{
+ map.setView([20,0],2);
+ selectCountry("GMB");
+ $("themeSelect").value="population";
+ $("baseSelect").value="dark";
+ setBase("dark");
+ applyChoropleth();
+});
+$("refreshBtn").addEventListener("click",async()=>{
+ $("headerStatus").textContent="Refreshing...";
+ try{
+  await Promise.all([loadEnergy(),loadAccess(),loadHouseholdData()]);
+  updateDashboard();
+  $("headerStatus").textContent="Datasets refreshed";
+ }catch(e){
+  $("headerStatus").textContent="Refresh failed — check data status";
+  console.error(e);
+ }
+});
+let autoTimer=null;
+map.on("moveend",()=>{
+ if(!$("autoPower").checked)return;
+ clearTimeout(autoTimer);
+ autoTimer=setTimeout(loadVisiblePower,1200);
+});
+
+/* ==========================================================
+   STARTUP
+========================================================== */
+async function initialise(){
+ $("headerStatus").textContent="Loading boundaries and datasets...";
+ try{
+  await loadCountries();
+ }catch(e){
+  $("headerStatus").textContent="Boundary loading failed";
+  console.error(e);
+ }
+ const tasks=await Promise.allSettled([
+  loadEnergy(),
+  loadAccess(),
+  loadHouseholdData()
+ ]);
+ tasks.forEach((t,i)=>{
+  if(t.status==="rejected"){
+   console.error("Dataset task failed:",i,t.reason);
+   if(i===0)$("energyStatus").textContent="Energy data unavailable: "+t.reason.message;
+   if(i===1)$("accessStatus").textContent="Access data unavailable: "+t.reason.message;
+  }
+ });
+ updateDashboard();
+ applyChoropleth();
+ $("headerStatus").textContent="Global dashboard ready";
+}
+initialise();
+</script>
+</body>
+</html>
