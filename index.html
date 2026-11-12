@@ -10,6 +10,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
 :root{
@@ -164,11 +165,11 @@ footer{font-size:9px;color:#71869a;line-height:1.5;margin-top:10px}
 
  <div class="section">
   <div class="section-title">Global households</div>
-  <div class="small">Average household size from the UN DESA Population Division 2026 database, delivered through a public CSV mirror. The mirror reformats the published table and retains each country's source and reference year. Household totals are estimates, not census counts. <a href="https://population.un.org/Household/" target="_blank" rel="noopener" style="color:#26d9e8">Official UN DESA database</a> · <a href="https://nationsinquiry.com/datasets/household-size/2026" target="_blank" rel="noopener" style="color:#26d9e8">CSV source</a>.</div>
+  <div class="small">Average household size is read from the UN DESA 2026 Excel workbook stored in this GitHub repository. The workbook is parsed in the browser; no CSV mirror or CORS proxy is required. Household totals are estimates, not census counts. <a href="https://population.un.org/Household/" target="_blank" rel="noopener" style="color:#26d9e8">Official UN DESA database</a> · <a href="https://nationsinquiry.com/datasets/household-size/2026" target="_blank" rel="noopener" style="color:#26d9e8">CSV source</a>.</div>
   <div id="householdStatus" class="status">Loading household data online...</div>
-  <label for="householdURL">Optional alternative household CSV URL</label>
-  <input id="householdURL" placeholder="Optional public CSV URL">
-  <button id="loadHouseholdURL" class="secondary">Load alternative CSV</button>
+  <label for="householdURL">Optional alternative workbook URL</label>
+  <input id="householdURL" placeholder="Public XLSX or CSV URL">
+  <button id="loadHouseholdURL" class="secondary">Load alternative file</button>
   <div class="small" style="margin-top:8px">
    Formula: population ÷ average household size. The reference year is shown separately. Estimates are not official census household counts.
   </div>
@@ -179,7 +180,7 @@ footer{font-size:9px;color:#71869a;line-height:1.5;margin-top:10px}
   <div class="small">
    • Our World in Data — Energy<br>
    • Our World in Data — Electricity access<br>
-   • UN DESA Population Division — Household Size and Composition 2026 (CSV mirror)<br>
+   • UN DESA Population Division — Household Size and Composition 2026 (repository XLSX)<br>
    • OpenStreetMap — Power infrastructure<br>
    • Geo-Countries — Country boundaries
   </div>
@@ -243,7 +244,7 @@ footer{font-size:9px;color:#71869a;line-height:1.5;margin-top:10px}
   <div id="accessStatus" class="status">Electricity access dataset loading...</div>
   <div id="globalHouseholdStatus" class="status">Household dataset loading...</div>
   <div class="small" style="margin-top:9px">
-   Population is taken from the energy dataset where available. Household totals are estimates using the latest available average household-size reading for each country. The household reference year may differ from the selected energy year.
+   Population is taken from the energy dataset where available. Household totals are estimates using the country-level average household size recorded in the UN DESA workbook. The household reference year may differ from the selected energy year.
   </div>
   <div class="button-row">
    <button id="exportCountryBtn">Export country data CSV</button>
@@ -268,7 +269,7 @@ const URLS = {
  countries: "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson",
  energy: "https://catalog.ourworldindata.org/energy/owid_energy/owid_energy.csv",
  access: "https://ourworldindata.org/grapher/share-of-the-population-with-access-to-electricity.csv?csvType=full&useColumnShortNames=false",
- households: "https://nationsinquiry.com/datasets/household-size/2026/data.csv"
+ households: "https://raw.githubusercontent.com/silkysingz94-oss/GLOBAL-ENERGY-INTELLIGENCE/main/undesa_pd_2026_hh-size-composition.xlsx"
 };
 
 const OVERPASS = [
@@ -592,94 +593,118 @@ async function loadAccess(){
 /* ==========================================================
    HOUSEHOLD DATA — UN DESA 2026
 ========================================================== */
-function parseHouseholdCSVText(raw){
- const lines=raw.replace(/^\uFEFF/,"").split(/\r?\n/);
- // The download includes source notes before its CSV header.
- let headerIndex=lines.findIndex(line=>{
-  const n=norm(line);
-  return n.includes("country")&&
-    (n.includes("averagehouseholdsize")||n.includes("householdsize"));
- });
- if(headerIndex<0)headerIndex=lines.findIndex(line=>norm(line).startsWith("country,"));
- if(headerIndex<0)throw new Error("Could not locate the household CSV header.");
 
- const csv=Papa.parse(lines.slice(headerIndex).join("\n"),{
-  header:true,skipEmptyLines:true,dynamicTyping:false
- });
- return csv.data||[];
+function countryToISO(name){
+ const n=norm(name);
+ const aliases={"gambia":"GMB","thegambia":"GMB","unitedstates":"USA","unitedstatesofamerica":"USA",
+  "russia":"RUS","russianfederation":"RUS","iran":"IRN","islamicrepublicofiran":"IRN",
+  "southkorea":"KOR","republicofkorea":"KOR","northkorea":"PRK","democraticpeoplesrepublicofkorea":"PRK",
+  "ivorycoast":"CIV","cotedivoire":"CIV","tanzania":"TZA","unitedrepublicoftanzania":"TZA",
+  "bolivia":"BOL","venezuela":"VEN","syria":"SYR","syrianarabrepublic":"SYR","capeverde":"CPV",
+  "czechia":"CZE","moldova":"MDA","brunei":"BRN","swaziland":"SWZ","eswatini":"SWZ",
+  "palestine":"PSE","stateofpalestine":"PSE"};
+ if(aliases[n])return aliases[n];
+ const found=Object.entries(countryNameByISO).find(([code,label])=>norm(label)===n);
+ return found?found[0]:"";
+}
+
+function parseHouseholdWorkbook(buffer){
+ if(typeof XLSX==="undefined")throw new Error("Excel reader library did not load. Check the internet connection and reload.");
+ const workbook=XLSX.read(new Uint8Array(buffer),{type:"array",cellDates:false});
+ const collected=[];
+ for(const sheetName of workbook.SheetNames){
+  const matrix=XLSX.utils.sheet_to_json(workbook.Sheets[sheetName],{header:1,defval:"",raw:false});
+  const sheetHint=norm(sheetName);
+  let found=null;
+  for(let ri=0;ri<Math.min(matrix.length,60);ri++){
+   const headers=(matrix[ri]||[]).map(v=>norm(v));
+   const countryCol=headers.findIndex(h=>h.includes("country")||h.includes("area"));
+   let sizeCol=headers.findIndex(h=>(h.includes("average")&&h.includes("household")&&h.includes("size"))||(h.includes("household")&&h.includes("size")));
+   if(sizeCol<0&&sheetHint.includes("averagehouseholdsize"))sizeCol=headers.findIndex(h=>["value","estimate","average","mean"].includes(h)||h.includes("estimate"));
+   if(countryCol>=0&&sizeCol>=0){found={ri,headers,countryCol,sizeCol};break;}
+  }
+  if(!found)continue;
+  const isoCol=found.headers.findIndex(h=>h==="iso3"||h.includes("iso3")||h==="alpha3"||h.includes("countrycode"));
+  const yearCol=found.headers.findIndex(h=>h==="year"||h.includes("referenceyear")||h.includes("datayear"));
+  const sourceCol=found.headers.findIndex(h=>h.includes("source"));
+  const unitCol=found.headers.findIndex(h=>h==="unit"||h.includes("unitofmeasurement"));
+  for(let j=found.ri+1;j<matrix.length;j++){
+   const row=matrix[j]||[],country=String(row[found.countryCol]||"").trim();
+   if(!country)continue;
+   let iso=isoCol>=0?String(row[isoCol]||"").trim().toUpperCase():"";
+   if(!/^[A-Z]{3}$/.test(iso))iso=countryToISO(country);
+   const size=number(row[found.sizeCol]);
+   if(!iso||!Number.isFinite(size)||size<=0||size>30)continue;
+   const unit=unitCol>=0?String(row[unitCol]||""):"";
+   if(unit&&/percent|percentage|%/i.test(unit))continue;
+   collected.push({iso,country,averageSize:size,year:yearCol>=0?number(row[yearCol]):null,
+    source:sourceCol>=0?String(row[sourceCol]||"UN DESA Population Division"):"UN DESA Population Division",
+    sheet:sheetName});
+  }
+ }
+ if(!collected.length)throw new Error("No country-level average household-size table was detected. Workbook sheets: "+workbook.SheetNames.join(", "));
+ householdByISO={};
+ for(const item of collected){
+  const old=householdByISO[item.iso];
+  if(!old||(item.year||0)>=(old.year||0))householdByISO[item.iso]=item;
+ }
+ householdRows=Object.values(householdByISO).sort((a,b)=>a.country.localeCompare(b.country));
+ return {records:householdRows.length,sheets:workbook.SheetNames.length};
+}
+
+function parseHouseholdCSVText(raw){
+ const lines=raw.replace(/^\\uFEFF/,"").split(/\\r?\\n/);
+ let headerIndex=lines.findIndex(line=>{const n=norm(line);return n.includes("country")&&(n.includes("averagehouseholdsize")||n.includes("householdsize"));});
+ if(headerIndex<0)headerIndex=lines.findIndex(line=>norm(line).startsWith("country,"));
+ if(headerIndex<0)throw new Error("Could not locate a country and household-size header in the CSV.");
+ return Papa.parse(lines.slice(headerIndex).join("\\n"),{header:true,skipEmptyLines:true,dynamicTyping:false}).data||[];
 }
 
 function parseHouseholdRows(rows){
- householdRows=[];
  householdByISO={};
-
  rows.forEach(row=>{
   const isoKey=findKey(row,["iso3","iso_code","iso","alpha3","country_code","code"]);
-  const nameKey=findKey(row,["country","countryname","name"]);
+  const nameKey=findKey(row,["country","countryname","name","area"]);
   const sizeKey=findKey(row,["average_household_size","average household size","household_size","average_size","size"]);
   const yearKey=findKey(row,["reference_year","reference year","year"]);
   const sourceKey=findKey(row,["source","type_of_source","source_type"]);
-
   let iso=isoKey?String(row[isoKey]||"").trim().toUpperCase():"";
-  if(!iso&&nameKey){
-   const n=norm(row[nameKey]);
-   const found=Object.entries(countryNameByISO).find(([code,name])=>norm(name)===n);
-   if(found)iso=found[0];
-  }
+  if(!/^[A-Z]{3}$/.test(iso)&&nameKey)iso=countryToISO(row[nameKey]);
   const size=sizeKey?number(row[sizeKey]):null;
-  if(!iso||!Number.isFinite(size)||size<=0)return;
-
-  const item={
-   iso,
-   country:nameKey?String(row[nameKey]):countryNameByISO[iso]||iso,
-   averageSize:size,
-   year:yearKey?number(row[yearKey]):null,
-   source:sourceKey?String(row[sourceKey]):"UN DESA"
-  };
-  householdByISO[iso]=item;
-  householdRows.push(item);
+  if(!iso||!Number.isFinite(size)||size<=0||size>30)return;
+  const item={iso,country:nameKey?String(row[nameKey]):countryNameByISO[iso]||iso,averageSize:size,
+   year:yearKey?number(row[yearKey]):null,source:sourceKey?String(row[sourceKey]):"UN DESA Population Division"};
+  const old=householdByISO[iso];
+  if(!old||(item.year||0)>=(old.year||0))householdByISO[iso]=item;
  });
+ householdRows=Object.values(householdByISO).sort((a,b)=>a.country.localeCompare(b.country));
 }
 
 async function loadHouseholdData(url=URLS.households){
- $("householdStatus").textContent="Connecting to UN DESA 2026 household-size data...";
- $("globalHouseholdStatus").textContent="Loading household-size data...";
- const candidates=[
-  url,
-  "https://api.allorigins.win/raw?url="+encodeURIComponent(url),
-  "https://corsproxy.io/?url="+encodeURIComponent(url)
- ];
- let lastError=null,raw=null,usedSource="";
- for(const candidate of [...new Set(candidates)]){
-  try{
-   const response=await fetch(candidate,{cache:"no-cache"});
-   if(!response.ok)throw new Error("HTTP "+response.status);
-   const body=await response.text();
-   if(!body||body.trim().length<100)throw new Error("The source returned an empty or incomplete CSV.");
-   raw=body;usedSource=candidate;break;
-  }catch(error){
-   lastError=error;
-   console.warn("Household CSV endpoint failed:",candidate,error);
-  }
- }
+ $("householdStatus").textContent="Downloading the UN DESA 2026 Excel workbook from GitHub...";
+ $("globalHouseholdStatus").textContent="Reading country-level household-size records...";
  try{
-  if(!raw)throw new Error(lastError?.message||"All household CSV endpoints failed.");
-  const rows=parseHouseholdCSVText(raw);
-  parseHouseholdRows(rows);
-  if(!householdRows.length)throw new Error("CSV downloaded, but no valid country household-size records were recognised. Check the column names.");
-  householdRows.sort((a,b)=>a.country.localeCompare(b.country));
-  const viaProxy=usedSource!==url;
-  $("householdStatus").textContent="Loaded average household size for "+householdRows.length+" countries from the UN DESA 2026 compilation."+(viaProxy?" (CORS fallback used)":"");
+  const response=await fetch(url,{cache:"no-cache"});
+  if(!response.ok)throw new Error("Workbook request failed: HTTP "+response.status);
+  const buffer=await response.arrayBuffer();
+  if(buffer.byteLength<1000)throw new Error("The downloaded file is empty or incomplete.");
+  if(/\\.csv(?:$|\\?)/i.test(url)){
+   const rows=parseHouseholdCSVText(new TextDecoder("utf-8").decode(buffer));
+   parseHouseholdRows(rows);
+  }else{
+   parseHouseholdWorkbook(buffer);
+  }
+  if(!householdRows.length)throw new Error("No valid country average-household-size records were recognised.");
+  $("householdStatus").textContent="Loaded "+householdRows.length+" country records from the UN DESA 2026 workbook stored in GitHub.";
   $("householdStatus").className="status good";
-  $("globalHouseholdStatus").textContent="Household-size data loaded for "+householdRows.length+" countries. Country-specific reference years are retained.";
+  $("globalHouseholdStatus").textContent="Household-size data ready for "+householdRows.length+" countries. Country-specific reference years and source notes are retained where present.";
   $("globalHouseholdStatus").className="status good";
-  updateDashboard();
-  applyChoropleth();
+  updateDashboard();applyChoropleth();
  }catch(err){
-  console.error("Household data error:",err);
-  $("householdStatus").textContent="Household source unavailable after direct and CORS-fallback attempts: "+err.message;
+  console.error("Household workbook error:",err);
+  $("householdStatus").textContent="UN DESA workbook unavailable: "+err.message;
   $("householdStatus").className="status bad";
-  $("globalHouseholdStatus").textContent="Household data could not be retrieved. Check the network or use the alternative CSV URL field.";
+  $("globalHouseholdStatus").textContent="Household estimates are unavailable until the repository workbook can be read. Check the workbook filename, repository access, and network connection.";
   $("globalHouseholdStatus").className="status bad";
  }
 }
@@ -1005,7 +1030,7 @@ $("exportCountryBtn").addEventListener("click",exportCountry);
 $("loadHouseholdURL").addEventListener("click",()=>{
  const url=$("householdURL").value.trim();
  if(url)loadHouseholdData(url);
- else alert("Enter a public CSV URL first.");
+ else alert("Enter a public XLSX or CSV URL first.");
 });
 $("resetBtn").addEventListener("click",()=>{
  selectedYear="latest";$("yearSelect").value="latest";
